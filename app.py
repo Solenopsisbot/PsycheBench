@@ -117,7 +117,8 @@ else:
         st.subheader("Individual Test Traces")
         
         for trace in model_data["traces"]:
-            with st.expander(f"[{trace['trait'].upper()}] Score: {trace['score']}/10 - {trace['test_id']}"):
+            iter_info = f" (Run {trace['iteration']})" if 'iteration' in trace else ""
+            with st.expander(f"[{trace['trait'].upper()}] Score: {trace['score']}/10 - {trace['test_id']}{iter_info}"):
                 st.markdown("**Prompt:**")
                 st.code(trace.get('prompt', 'N/A'))
                 st.markdown("**Response:**")

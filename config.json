@@ -1,5 +1,6 @@
 {
   "judge_model_id": "gpt-5.2",
+  "multiplier": 3,
   "models": [
     "gpt-5.2",
     "gemini-3-pro-preview",

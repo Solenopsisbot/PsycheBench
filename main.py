@@ -87,7 +87,7 @@ def generate_markdown_report(report: Dict, output_path: Path):
     with open(output_path, "w") as f:
         f.write(md)
 
-def run_single_test(model: str, trait: str, test: Dict, rubric: str) -> Dict:
+def run_single_test(model: str, trait: str, test: Dict, rubric: str, iteration: int) -> Dict:
     start_time = time.time()
     try:
         completion = client.chat.completions.create(
@@ -101,12 +101,14 @@ def run_single_test(model: str, trait: str, test: Dict, rubric: str) -> Dict:
         }
         latency = time.time() - start_time
     except Exception as e:
-        return {"error": str(e)}
+        return {"error": str(e), "model": model}
 
     eval_result = evaluate_with_judge(trait, test["user_prompt"], subject_response, rubric)
     
     return {
+        "model": model,
         "test_id": test["id"],
+        "iteration": iteration,
         "trait": trait,
         "score": eval_result["score"],
         "latency": latency,
@@ -116,7 +118,7 @@ def run_single_test(model: str, trait: str, test: Dict, rubric: str) -> Dict:
         "judge_usage": eval_result["usage"]
     }
 
-def run_benchmark(model_ids: List[str]):
+def run_benchmark(model_ids: List[str], multiplier: int):
     start_bench = time.time()
     timestamp = time.strftime("%Y%m%d_%H%M%S")
     
@@ -132,35 +134,40 @@ def run_benchmark(model_ids: List[str]):
         "meta": {
             "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"), 
             "judge_model": JUDGE_MODEL_ID,
+            "multiplier": multiplier,
             "traits": trait_metadata
         },
-        "models": {}
+        "models": {model: {"scores": {}, "traces": [], "metrics": {}} for model in model_ids}
     }
 
-    for model in model_ids:
-        print(f"\n🚀 Testing: {model}")
-        model_data = {"scores": {}, "traces": [], "metrics": {}}
-        tasks = []
-        
-        with ThreadPoolExecutor(max_workers=50) as executor:
+    all_tasks = []
+    with ThreadPoolExecutor(max_workers=80) as executor:
+        for model in model_ids:
             for trait, data in TEST_SETS.items():
                 for test in data["tests"]:
-                    tasks.append(executor.submit(run_single_test, model, trait, test, data["rubric"]))
-            
-            results = []
-            for future in as_completed(tasks):
-                res = future.result()
-                results.append(res)
-                print(".", end="", flush=True)
+                    for i in range(multiplier):
+                        all_tasks.append(executor.submit(run_single_test, model, trait, test, data["rubric"], i + 1))
+        
+        print(f"🚀 Starting global benchmark for {len(model_ids)} models ({len(all_tasks)} total tests)...")
+        
+        results = []
+        for future in as_completed(all_tasks):
+            res = future.result()
+            results.append(res)
+            print(".", end="", flush=True)
+    print(" Done.")
 
-        # Aggregation
+    # Aggregation
+    for model in model_ids:
+        model_data = final_report["models"][model]
+        model_results = [r for r in results if r.get("model") == model and "error" not in r]
+        
         all_scores = {trait: [] for trait in TEST_SETS.keys()}
         latencies = []
         sub_tokens = 0
         judge_tokens = 0
 
-        for res in results:
-            if "error" in res: continue
+        for res in model_results:
             all_scores[res["trait"]].append(res["score"])
             latencies.append(res["latency"])
             sub_tokens += res["subject_usage"]["prompt_tokens"] + res["subject_usage"]["completion_tokens"]
@@ -175,8 +182,6 @@ def run_benchmark(model_ids: List[str]):
             "total_subject_tokens": sub_tokens,
             "total_judge_tokens": judge_tokens
         }
-        final_report["models"][model] = model_data
-        print(" Done.")
 
     final_report["meta"]["total_duration"] = time.time() - start_bench
 
@@ -198,8 +203,9 @@ if __name__ == "__main__":
             config = json.load(f)
             models = config.get("models", [])
             JUDGE_MODEL_ID = config.get("judge_model_id", "gpt-4o")  # Default to a smart model
+            MULTIPLIER = config.get("multiplier", 1)
         if models:
-            run_benchmark(models)
+            run_benchmark(models, MULTIPLIER)
         else:
             print("❌ No models in config.json")
     except FileNotFoundError:
