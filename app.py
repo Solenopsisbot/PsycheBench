@@ -118,7 +118,7 @@ else:
         
         for trace in model_data["traces"]:
             iter_info = f" (Run {trace['iteration']})" if 'iteration' in trace else ""
-            with st.expander(f"[{trace['trait'].upper()}] Score: {trace['score']}/10 - {trace['test_id']}{iter_info}"):
+            with st.expander(f"[{trace['trait'].upper()}] Score: {trace['score']:.1f}/10 - {trace['test_id']}{iter_info}"):
                 st.markdown("**Prompt:**")
                 st.code(trace.get('prompt', 'N/A'))
                 st.markdown("**Response:**")

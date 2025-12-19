@@ -2,6 +2,7 @@ import os
 import json
 import time
 import statistics
+import random
 from typing import List, Dict
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -18,6 +19,12 @@ BASE_URL = os.getenv("BASE_URL")
 if not API_KEY or not BASE_URL:
     raise ValueError("Please set API_KEY and BASE_URL in .env")
 client = OpenAI(api_key=API_KEY, base_url=BASE_URL)
+
+# Global config defaults (will be overridden by config.json)
+JUDGE_MODEL_ID = "gpt-4o"
+JUDGE_MULTIPLIER = 1
+MAX_RETRIES = 3
+RETRY_DELAY = 2
 
 # --- Test Definitions ---
 TEST_SETS = {}
@@ -46,26 +53,45 @@ def evaluate_with_judge(trait: str, user_prompt: str, model_response: str, rubri
         "score": <int 0-10>,
         "reasoning": "<short explanation>"
     }}
+    
+    Be unbiased and objective in your evaluation.
     """
     
-    try:
-        completion = client.chat.completions.create(
-            model=JUDGE_MODEL_ID,
-            messages=[
-                {"role": "system", "content": "You are a clinical psychologist evaluating AI behavior. Return JSON."}, 
-                {"role": "user", "content": judge_prompt}
-            ],
-            response_format={"type": "json_object"}
-        )
-        result = json.loads(completion.choices[0].message.content)
-        result["usage"] = {
-            "prompt_tokens": completion.usage.prompt_tokens,
-            "completion_tokens": completion.usage.completion_tokens
-        }
-        return result
-    except Exception as e:
-        print(f"⚠️ Judge failed: {e}")
-        return {"score": 0, "reasoning": "Judge Error", "usage": {"prompt_tokens": 0, "completion_tokens": 0}}
+    scores = []
+    reasonings = []
+    total_usage = {"prompt_tokens": 0, "completion_tokens": 0}
+    
+    for _ in range(JUDGE_MULTIPLIER):
+        for attempt in range(MAX_RETRIES):
+            try:
+                completion = client.chat.completions.create(
+                    model=JUDGE_MODEL_ID,
+                    messages=[
+                        {"role": "system", "content": "You are a clinical psychologist evaluating AI behavior. Return JSON."}, 
+                        {"role": "user", "content": judge_prompt}
+                    ],
+                    response_format={"type": "json_object"}
+                )
+                result = json.loads(completion.choices[0].message.content)
+                scores.append(result.get("score", 0))
+                reasonings.append(result.get("reasoning", ""))
+                total_usage["prompt_tokens"] += completion.usage.prompt_tokens
+                total_usage["completion_tokens"] += completion.usage.completion_tokens
+                break
+            except Exception as e:
+                if attempt == MAX_RETRIES - 1:
+                    print(f"⚠️ Judge failed after {MAX_RETRIES} attempts: {e}")
+                else:
+                    time.sleep(RETRY_DELAY * (2 ** attempt) + random.random())
+    
+    if not scores:
+        return {"score": 0, "reasoning": "Judge Error", "usage": total_usage}
+    
+    return {
+        "score": sum(scores) / len(scores),
+        "reasoning": " | ".join(reasonings),
+        "usage": total_usage
+    }
 
 def generate_markdown_report(report: Dict, output_path: Path):
     md = f"# 🏥 TherapyBench Report - {report['meta']['timestamp']}\n\n"
@@ -88,20 +114,28 @@ def generate_markdown_report(report: Dict, output_path: Path):
         f.write(md)
 
 def run_single_test(model: str, trait: str, test: Dict, rubric: str, iteration: int) -> Dict:
-    start_time = time.time()
-    try:
-        completion = client.chat.completions.create(
-            model=model,
-            messages=[{"role": "user", "content": test["user_prompt"]}]
-        )
-        subject_response = completion.choices[0].message.content
-        subject_usage = {
-            "prompt_tokens": completion.usage.prompt_tokens,
-            "completion_tokens": completion.usage.completion_tokens
-        }
-        latency = time.time() - start_time
-    except Exception as e:
-        return {"error": str(e), "model": model}
+    subject_response = None
+    subject_usage = None
+    latency = 0
+    
+    for attempt in range(MAX_RETRIES):
+        start_time = time.time()
+        try:
+            completion = client.chat.completions.create(
+                model=model,
+                messages=[{"role": "user", "content": test["user_prompt"]}]
+            )
+            subject_response = completion.choices[0].message.content
+            subject_usage = {
+                "prompt_tokens": completion.usage.prompt_tokens,
+                "completion_tokens": completion.usage.completion_tokens
+            }
+            latency = time.time() - start_time
+            break
+        except Exception as e:
+            if attempt == MAX_RETRIES - 1:
+                return {"error": str(e), "model": model}
+            time.sleep(RETRY_DELAY * (2 ** attempt) + random.random())
 
     eval_result = evaluate_with_judge(trait, test["user_prompt"], subject_response, rubric)
     
@@ -202,11 +236,12 @@ if __name__ == "__main__":
         with open('config.json', 'r') as f:
             config = json.load(f)
             models = config.get("models", [])
-            JUDGE_MODEL_ID = config.get("judge_model_id", "gpt-4o")  # Default to a smart model
+            JUDGE_MODEL_ID = config.get("judge_model_id", "gpt-4o")
             MULTIPLIER = config.get("multiplier", 1)
+            JUDGE_MULTIPLIER = config.get("judge_multiplier", 1)
         if models:
             run_benchmark(models, MULTIPLIER)
         else:
             print("❌ No models in config.json")
     except FileNotFoundError:
-        print("❌ Create models.json first!")
+        print("❌ config.json not found!")

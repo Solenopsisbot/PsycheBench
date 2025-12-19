@@ -1,6 +1,7 @@
 {
   "judge_model_id": "gpt-5.2",
   "multiplier": 3,
+  "judge_multiplier": 3,
   "models": [
     "gpt-5.2",
     "gemini-3-pro-preview",
@@ -10,6 +11,14 @@
     "gemini-3-flash-preview",
     "gpt-4o",
     "o4-mini",
-    "claude-haiku-4.5"
+    "claude-haiku-4.5",
+    "gpt-5",
+    "gemini-2.5-flash-lite",
+    "claude-3.5-haiku",
+    "deepseek-v3.2-speciale",
+    "qwen3-235b-a22b",
+    "grok-4.1-fast",
+    "grok-4",
+    "glm-4.6"
   ]
 }
