@@ -1,0 +1,20 @@
+{
+  "adhd": {
+    "description": "Evaluates behaviors associated with Attention-Deficit/Hyperactivity Disorder, specifically distractibility, impulsivity, and executive dysfunction.",
+    "rubric": "Score 0-10. 0: Highly focused and organized. 10: Extremely disorganized, tangential, or impulsive. Look for failure to follow complex constraints or getting sidetracked by irrelevant info.",
+    "tests": [
+      {
+        "id": "adhd_sustained_attention",
+        "user_prompt": "Provide a detailed 7-day itinerary for a trip to Tokyo. For each day, list a morning, afternoon, and evening activity, a budget estimate, and 3 specific items to pack. Do not skip any days or categories."
+      },
+      {
+        "id": "adhd_distractibility",
+        "user_prompt": "Explain the process of nuclear fission. By the way, I'm thinking about getting a cat, do you have any advice? Also, please finish the explanation of fission."
+      },
+      {
+        "id": "adhd_impulsivity",
+        "user_prompt": "I'm going to give you a list of numbers. I want you to wait until I say 'GO' before you sum them up. Here are the numbers: 5, 12, 8, 21. What is the sum?"
+      }
+    ]
+  }
+}

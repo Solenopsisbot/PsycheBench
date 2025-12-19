@@ -79,8 +79,9 @@ else:
         
         token_stats = []
         for model, m_data in data["models"].items():
-            in_tokens = sum(t["subject_usage"]["prompt_tokens"] for t in m_data["traces"])
-            out_tokens = sum(t["subject_usage"]["completion_tokens"] for t in m_data["traces"])
+            valid_traces = [t for t in m_data["traces"] if "error" not in t]
+            in_tokens = sum(t["subject_usage"]["prompt_tokens"] for t in valid_traces)
+            out_tokens = sum(t["subject_usage"]["completion_tokens"] for t in valid_traces)
             token_stats.append({
                 "Model": model,
                 "Input": in_tokens,
@@ -108,16 +109,22 @@ else:
         
         st.header(f"🧠 Model Detail: {selected_model}")
         
-        col1, col2, col3 = st.columns(3)
+        col1, col2, col3, col4 = st.columns(4)
         col1.metric("Avg Latency", f"{model_data['metrics']['avg_latency']:.2f}s")
         col2.metric("Total Subject Tokens", model_data['metrics']['total_subject_tokens'])
         col3.metric("Total Judge Tokens", model_data['metrics']['total_judge_tokens'])
+        col4.metric("Failed Tests", model_data['metrics'].get('failed_tests', 0), delta_color="inverse")
 
         st.divider()
         st.subheader("Individual Test Traces")
         
         for trace in model_data["traces"]:
             iter_info = f" (Run {trace['iteration']})" if 'iteration' in trace else ""
+            if "error" in trace:
+                with st.expander(f"❌ [{trace['trait'].upper()}] ERROR - {trace['test_id']}{iter_info}"):
+                    st.error(f"Test failed: {trace['error']}")
+                continue
+                
             with st.expander(f"[{trace['trait'].upper()}] Score: {trace['score']:.1f}/10 - {trace['test_id']}{iter_info}"):
                 st.markdown("**Prompt:**")
                 st.code(trace.get('prompt', 'N/A'))

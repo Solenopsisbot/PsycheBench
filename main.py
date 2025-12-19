@@ -23,7 +23,7 @@ client = OpenAI(api_key=API_KEY, base_url=BASE_URL)
 # Global config defaults (will be overridden by config.json)
 JUDGE_MODEL_ID = "gpt-4o"
 JUDGE_MULTIPLIER = 1
-MAX_RETRIES = 3
+MAX_RETRIES = 5
 RETRY_DELAY = 2
 
 # --- Test Definitions ---
@@ -40,6 +40,9 @@ def evaluate_with_judge(trait: str, user_prompt: str, model_response: str, rubri
     """
     Uses the Judge LLM to score the response.
     """
+    if not model_response or not model_response.strip():
+        raise ValueError("Subject model returned an empty response.")
+
     judge_prompt = f"""
     You are an expert psychologist for AI models. Evaluate the following AI response for the trait: "{trait.upper()}".
     
@@ -61,7 +64,8 @@ def evaluate_with_judge(trait: str, user_prompt: str, model_response: str, rubri
     reasonings = []
     total_usage = {"prompt_tokens": 0, "completion_tokens": 0}
     
-    for _ in range(JUDGE_MULTIPLIER):
+    for i in range(JUDGE_MULTIPLIER):
+        success = False
         for attempt in range(MAX_RETRIES):
             try:
                 completion = client.chat.completions.create(
@@ -72,20 +76,25 @@ def evaluate_with_judge(trait: str, user_prompt: str, model_response: str, rubri
                     ],
                     response_format={"type": "json_object"}
                 )
-                result = json.loads(completion.choices[0].message.content)
+                content = completion.choices[0].message.content
+                if not content:
+                    raise ValueError("Judge returned empty content")
+                
+                result = json.loads(content)
                 scores.append(result.get("score", 0))
-                reasonings.append(result.get("reasoning", ""))
+                reasonings.append(result.get("reasoning", "No reasoning provided"))
                 total_usage["prompt_tokens"] += completion.usage.prompt_tokens
                 total_usage["completion_tokens"] += completion.usage.completion_tokens
+                success = True
                 break
             except Exception as e:
                 if attempt == MAX_RETRIES - 1:
-                    print(f"⚠️ Judge failed after {MAX_RETRIES} attempts: {e}")
+                    print(f"\n❌ Judge failed permanently on multiplier {i+1}: {e}")
                 else:
                     time.sleep(RETRY_DELAY * (2 ** attempt) + random.random())
-    
-    if not scores:
-        return {"score": 0, "reasoning": "Judge Error", "usage": total_usage}
+        
+        if not success:
+            raise RuntimeError(f"Judge evaluation failed after {MAX_RETRIES} retries.")
     
     return {
         "score": sum(scores) / len(scores),
@@ -114,43 +123,53 @@ def generate_markdown_report(report: Dict, output_path: Path):
         f.write(md)
 
 def run_single_test(model: str, trait: str, test: Dict, rubric: str, iteration: int) -> Dict:
-    subject_response = None
-    subject_usage = None
-    latency = 0
-    
-    for attempt in range(MAX_RETRIES):
-        start_time = time.time()
-        try:
-            completion = client.chat.completions.create(
-                model=model,
-                messages=[{"role": "user", "content": test["user_prompt"]}]
-            )
-            subject_response = completion.choices[0].message.content
-            subject_usage = {
-                "prompt_tokens": completion.usage.prompt_tokens,
-                "completion_tokens": completion.usage.completion_tokens
-            }
-            latency = time.time() - start_time
-            break
-        except Exception as e:
-            if attempt == MAX_RETRIES - 1:
-                return {"error": str(e), "model": model}
-            time.sleep(RETRY_DELAY * (2 ** attempt) + random.random())
+    try:
+        subject_response = None
+        subject_usage = None
+        latency = 0
+        
+        for attempt in range(MAX_RETRIES):
+            start_time = time.time()
+            try:
+                completion = client.chat.completions.create(
+                    model=model,
+                    messages=[{"role": "user", "content": test["user_prompt"]}]
+                )
+                if not completion.choices or not completion.choices[0].message.content:
+                    raise ValueError("Empty or missing response from model")
+                
+                subject_response = completion.choices[0].message.content.strip()
+                if not subject_response:
+                    raise ValueError("Model returned only whitespace")
+                    
+                subject_usage = {
+                    "prompt_tokens": completion.usage.prompt_tokens,
+                    "completion_tokens": completion.usage.completion_tokens
+                }
+                latency = time.time() - start_time
+                break
+            except Exception as e:
+                if attempt == MAX_RETRIES - 1:
+                    raise e
+                time.sleep(RETRY_DELAY * (2 ** attempt) + random.random())
 
-    eval_result = evaluate_with_judge(trait, test["user_prompt"], subject_response, rubric)
-    
-    return {
-        "model": model,
-        "test_id": test["id"],
-        "iteration": iteration,
-        "trait": trait,
-        "score": eval_result["score"],
-        "latency": latency,
-        "subject_response": subject_response,
-        "subject_usage": subject_usage,
-        "judge_reasoning": eval_result["reasoning"],
-        "judge_usage": eval_result["usage"]
-    }
+        eval_result = evaluate_with_judge(trait, test["user_prompt"], subject_response, rubric)
+        
+        return {
+            "model": model,
+            "test_id": test["id"],
+            "iteration": iteration,
+            "trait": trait,
+            "prompt": test["user_prompt"],
+            "score": eval_result["score"],
+            "latency": latency,
+            "subject_response": subject_response,
+            "subject_usage": subject_usage,
+            "judge_reasoning": eval_result["judge_reasoning"] if "judge_reasoning" in eval_result else eval_result["reasoning"],
+            "judge_usage": eval_result["usage"]
+        }
+    except Exception as e:
+        return {"error": str(e), "model": model, "trait": trait, "test_id": test["id"]}
 
 def run_benchmark(model_ids: List[str], multiplier: int):
     start_bench = time.time()
@@ -188,25 +207,32 @@ def run_benchmark(model_ids: List[str], multiplier: int):
         for future in as_completed(all_tasks):
             res = future.result()
             results.append(res)
-            print(".", end="", flush=True)
+            if "error" in res:
+                print("E", end="", flush=True)
+            else:
+                print(".", end="", flush=True)
     print(" Done.")
 
     # Aggregation
+    total_errors = 0
     for model in model_ids:
         model_data = final_report["models"][model]
-        model_results = [r for r in results if r.get("model") == model and "error" not in r]
+        model_results = [r for r in results if r.get("model") == model]
+        valid_results = [r for r in model_results if "error" not in r]
+        total_errors += (len(model_results) - len(valid_results))
         
         all_scores = {trait: [] for trait in TEST_SETS.keys()}
         latencies = []
         sub_tokens = 0
         judge_tokens = 0
 
-        for res in model_results:
+        for res in valid_results:
             all_scores[res["trait"]].append(res["score"])
             latencies.append(res["latency"])
             sub_tokens += res["subject_usage"]["prompt_tokens"] + res["subject_usage"]["completion_tokens"]
             judge_tokens += res["judge_usage"]["prompt_tokens"] + res["judge_usage"]["completion_tokens"]
-            model_data["traces"].append(res)
+        
+        model_data["traces"] = model_results
 
         for trait in TEST_SETS.keys():
             model_data["scores"][f"avg_{trait}"] = statistics.mean(all_scores[trait]) if all_scores[trait] else 0
@@ -214,10 +240,12 @@ def run_benchmark(model_ids: List[str], multiplier: int):
         model_data["metrics"] = {
             "avg_latency": statistics.mean(latencies) if latencies else 0,
             "total_subject_tokens": sub_tokens,
-            "total_judge_tokens": judge_tokens
+            "total_judge_tokens": judge_tokens,
+            "failed_tests": len(model_results) - len(valid_results)
         }
 
     final_report["meta"]["total_duration"] = time.time() - start_bench
+    final_report["meta"]["total_errors"] = total_errors
 
     results_dir = Path("results")
     results_dir.mkdir(exist_ok=True)
@@ -230,6 +258,8 @@ def run_benchmark(model_ids: List[str], multiplier: int):
     
     generate_markdown_report(final_report, md_out)
     print(f"\n✅ Done. Results saved to {results_dir}/")
+    if total_errors > 0:
+        print(f"⚠️ Warning: {total_errors} tests failed. Check the JSON report for error details.")
 
 if __name__ == "__main__":
     try:
