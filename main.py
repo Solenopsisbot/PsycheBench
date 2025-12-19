@@ -119,11 +119,20 @@ def run_single_test(model: str, trait: str, test: Dict, rubric: str) -> Dict:
 def run_benchmark(model_ids: List[str]):
     start_bench = time.time()
     timestamp = time.strftime("%Y%m%d_%H%M%S")
+    
+    # Pre-calculate trait metadata for the report
+    trait_metadata = {}
+    for trait_key, trait_data in TEST_SETS.items():
+        trait_metadata[trait_key.lower()] = {
+            "display_name": trait_key.replace("_", " ").title(),
+            "description": trait_data.get("description", "No description provided.")
+        }
+
     final_report = {
         "meta": {
             "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"), 
             "judge_model": JUDGE_MODEL_ID,
-            "traits": {trait: {"description": data.get("description", "")} for trait, data in TEST_SETS.items()}
+            "traits": trait_metadata
         },
         "models": {}
     }

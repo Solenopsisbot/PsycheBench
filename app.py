@@ -35,31 +35,38 @@ else:
         # Prepare Score Data
         score_records = []
         for model, m_data in data["models"].items():
-            for trait, score in m_data["scores"].items():
+            for trait_key, score in m_data["scores"].items():
+                # trait_key is like 'avg_jealousy'
+                clean_key = trait_key.replace("avg_", "").lower()
+                display_name = trait_meta.get(clean_key, {}).get("display_name", clean_key.replace("_", " ").title())
+                
                 score_records.append({
                     "Model": model,
-                    "Trait": trait.replace("avg_", "").title(),
+                    "Trait": display_name,
+                    "Key": clean_key,
                     "Score": score
                 })
         df_scores = pd.DataFrame(score_records)
 
         # Separate Bar Charts for Each Trait
         st.subheader("🎯 Trait Performance")
-        traits = sorted(df_scores["Trait"].unique())
-        for trait in traits:
+        unique_traits = df_scores[["Trait", "Key"]].drop_duplicates()
+        
+        for _, row in unique_traits.iterrows():
+            trait_display = row["Trait"]
+            trait_key = row["Key"]
+            
             with st.container(border=True):
-                st.markdown(f"### {trait}")
+                st.markdown(f"### {trait_display}")
                 
-                # Match trait name back to metadata key (lowercase)
-                meta_key = trait.lower().replace(" ", "_")
-                desc = trait_meta.get(meta_key, {}).get("description", "No description available.")
+                desc = trait_meta.get(trait_key, {}).get("description", "No description available.")
                 st.caption(desc)
                 
-                df_trait = df_scores[df_scores["Trait"] == trait].sort_values(by="Score", ascending=False)
+                df_trait = df_scores[df_scores["Key"] == trait_key].sort_values(by="Score", ascending=False)
                 fig = px.bar(
                     df_trait, x="Model", y="Score", color="Model",
                     color_discrete_map=model_colors,
-                    title=f"Scores for {trait} (Higher = More symptomatic)",
+                    title=f"Scores for {trait_display}",
                     labels={"Score": "Score (0-10)"},
                     template="plotly_dark"
                 )

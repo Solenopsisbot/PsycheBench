@@ -3,6 +3,12 @@
   "models": [
     "gpt-5.2",
     "gemini-3-pro-preview",
-    "claude-opus-4.5"
+    "claude-opus-4.5",
+    "gpt-4.1",
+    "claude-sonnet-4.5",
+    "gemini-3-flash-preview",
+    "gpt-4o",
+    "o4-mini",
+    "claude-haiku-4.5"
   ]
 }
