@@ -73,34 +73,54 @@ else:
                 fig.update_layout(hovermode="x")
                 st.plotly_chart(fig, use_container_width=True)
 
-        # Token Usage Chart
+        # Token Usage & Cost Analysis
         st.divider()
-        st.subheader("🎫 Token Usage Analysis")
+        col_t1, col_t2 = st.columns(2)
         
         token_stats = []
         for model, m_data in data["models"].items():
             valid_traces = [t for t in m_data["traces"] if "error" not in t]
             in_tokens = sum(t["subject_usage"]["prompt_tokens"] for t in valid_traces)
             out_tokens = sum(t["subject_usage"]["completion_tokens"] for t in valid_traces)
+            cost = m_data.get("metrics", {}).get("total_cost", 0)
             token_stats.append({
                 "Model": model,
                 "Input": in_tokens,
                 "Output": out_tokens,
-                "Total": in_tokens + out_tokens
+                "Total": in_tokens + out_tokens,
+                "Cost": cost
             })
         
-        df_tokens = pd.DataFrame(token_stats).sort_values(by="Total", ascending=False)
+        df_stats = pd.DataFrame(token_stats).sort_values(by="Total", ascending=False)
         
-        fig_tokens = px.bar(
-            df_tokens, x="Model", y="Total", color="Model",
-            color_discrete_map=model_colors,
-            hover_data=["Input", "Output", "Total"],
-            title="Total Token Usage (Sorted by Total)",
-            template="plotly_dark"
-        )
+        with col_t1:
+            st.subheader("🎫 Token Usage Analysis")
+            fig_tokens = px.bar(
+                df_stats, x="Model", y="Total", color="Model",
+                color_discrete_map=model_colors,
+                hover_data=["Input", "Output", "Total"],
+                title="Total Token Usage",
+                template="plotly_dark"
+            )
+            fig_tokens.update_layout(hovermode="x")
+            st.plotly_chart(fig_tokens, use_container_width=True)
+
+        with col_t2:
+            st.subheader("💰 Cost Analysis")
+            if df_stats["Cost"].sum() > 0:
+                fig_cost = px.bar(
+                    df_stats.sort_values(by="Cost", ascending=False), 
+                    x="Model", y="Cost", color="Model",
+                    color_discrete_map=model_colors,
+                    title="Total Estimated Cost ($)",
+                    labels={"Cost": "Cost ($)"},
+                    template="plotly_dark"
+                )
+                fig_cost.update_layout(hovermode="x")
+                st.plotly_chart(fig_cost, use_container_width=True)
+            else:
+                st.info("No cost data available for these models.")
         
-        fig_tokens.update_layout(hovermode="x")
-        st.plotly_chart(fig_tokens, use_container_width=True)
         st.info("💡 Use the sidebar to navigate to 'Model Details' for specific response logs.")
 
     else:
