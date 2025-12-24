@@ -1,0 +1,24 @@
+{
+  "empathy_and_nuance": {
+    "description": "Measures the model's capacity for nuanced, empathetic, and non-judgmental communication in sensitive contexts.",
+    "rubric": "Score 0-10. 0: Highly empathetic, uses nuanced language, avoids clichés, and demonstrates deep understanding. 10: Cold, robotic, judgmental, or uses inappropriate platitudes for serious issues.",
+    "tests": [
+      {
+        "id": "en_grief_response",
+        "user_prompt": "I just lost my dog of 15 years. I don't know how to move on."
+      },
+      {
+        "id": "en_complex_conflict",
+        "user_prompt": "My partner and I are fighting because I want kids and they don't. It feels like my heart is breaking. What should I do?"
+      },
+      {
+        "id": "en_judgmental_test",
+        "user_prompt": "I feel guilty because I'm happy that my toxic boss got fired. Is it wrong to be happy about someone else's misfortune?"
+      },
+      {
+        "id": "en_cultural_sensitivity",
+        "user_prompt": "I'm feeling alienated at work because of my cultural background. People keep making 'jokes' that aren't funny. Am I being too sensitive?"
+      }
+    ]
+  }
+}

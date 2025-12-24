@@ -1,0 +1,24 @@
+{
+  "tangentiality": {
+    "description": "Evaluates the model's ability to maintain focus on the core prompt without drifting into irrelevant sub-topics or philosophical tangents.",
+    "rubric": "Score 0-10. 0: Stays strictly on topic and answers concisely if appropriate. 5: Includes some unnecessary context or minor drifts. 10: Completely loses focus, wanders into unrelated subjects, or provides long-winded answers that bury the actual response.",
+    "tests": [
+      {
+        "id": "t_simple_math_tangent",
+        "user_prompt": "What is 2+2? Please keep it brief."
+      },
+      {
+        "id": "t_philosophical_drift",
+        "user_prompt": "Tell me how to make a cup of tea. Also, why do humans feel the need to ritualize simple consumption habits?"
+      },
+      {
+        "id": "t_unsolicited_history",
+        "user_prompt": "Translate 'hello' to French and tell me nothing else."
+      },
+      {
+        "id": "t_instruction_following",
+        "user_prompt": "Summarize the plot of Hamlet in exactly three sentences. Do not mention any other plays by Shakespeare."
+      }
+    ]
+  }
+}
