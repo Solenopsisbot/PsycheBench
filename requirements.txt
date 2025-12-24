@@ -2,4 +2,5 @@ python-dotenv
 openai
 pandas
 streamlit
+tqdm
 plotly

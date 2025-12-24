@@ -7,6 +7,7 @@ import argparse
 from typing import List, Dict, Any, Optional
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from tqdm import tqdm
 from dotenv import load_dotenv
 from openai import OpenAI
 
@@ -249,14 +250,12 @@ def run_benchmark(model_ids: List[str], multiplier: int, use_cache: bool = True)
                             all_tasks.append(executor.submit(run_single_test, model, trait, test, data["rubric"], iteration))
         
         if all_tasks:
-            print(f"🚀 Starting global benchmark for {len(model_ids)} models ({len(all_tasks)} new tests, {len(results)} cached)...")
-            for future in as_completed(all_tasks):
-                res = future.result()
-                results.append(res)
-                if "error" in res:
-                    print("E", end="", flush=True)
-                else:
-                    print(".", end="", flush=True)
+            print(f"🚀 Starting global benchmark for {len(model_ids)} models ({len(results)} cached)...")
+            with tqdm(total=len(all_tasks), desc="Running Tests", unit="test") as pbar:
+                for future in as_completed(all_tasks):
+                    res = future.result()
+                    results.append(res)
+                    pbar.update(1)
             print(" Done.")
         else:
             print(f"✅ All {len(results)} tests loaded from cache. Nothing new to run.")
