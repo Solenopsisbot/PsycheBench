@@ -3,7 +3,8 @@ import json
 import time
 import statistics
 import random
-from typing import List, Dict
+import argparse
+from typing import List, Dict, Any, Optional
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dotenv import load_dotenv
@@ -25,6 +26,31 @@ JUDGE_MODEL_ID = "gpt-4o"
 JUDGE_MULTIPLIER = 1
 MAX_RETRIES = 5
 RETRY_DELAY = 2
+
+def load_cache() -> Dict[tuple, Dict]:
+    results_dir = Path("results")
+    if not results_dir.exists():
+        return {}
+    files = sorted(results_dir.glob("report_*.json"), key=os.path.getmtime, reverse=True)
+    if not files:
+        return {}
+    
+    latest_file = files[0]
+    print(f"📦 Loading cache from {latest_file}...")
+    try:
+        with open(latest_file, 'r') as f:
+            data = json.load(f)
+            cache = {}
+            for model_id, model_data in data.get("models", {}).items():
+                for trace in model_data.get("traces", []):
+                    if "error" not in trace:
+                        # Key by (model, trait, test_id, iteration)
+                        key = (model_id, trace["trait"], trace["test_id"], trace.get("iteration", 1))
+                        cache[key] = trace
+            return cache
+    except Exception as e:
+        print(f"⚠️ Could not load cache: {e}")
+    return {}
 
 # --- Test Definitions ---
 TEST_SETS = {}
@@ -84,8 +110,6 @@ def evaluate_with_judge(trait: str, user_prompt: str, model_response: str, rubri
                 result = json.loads(content)
                 scores.append(result.get("score", 0))
                 reasonings.append(result.get("reasoning", "No reasoning provided"))
-                total_usage["prompt_tokens"] += completion.usage.prompt_tokens
-                total_usage["completion_tokens"] += completion.usage.completion_tokens
                 success = True
                 break
             except Exception as e:
@@ -99,8 +123,7 @@ def evaluate_with_judge(trait: str, user_prompt: str, model_response: str, rubri
     
     return {
         "score": sum(scores) / len(scores),
-        "reasoning": " | ".join(reasonings),
-        "usage": total_usage
+        "reasoning": " | ".join(reasonings)
     }
 
 def generate_markdown_report(report: Dict, output_path: Path):
@@ -118,7 +141,9 @@ def generate_markdown_report(report: Dict, output_path: Path):
         md += f"\n**Performance Metrics:**\n"
         md += f"- Avg Latency: {metrics['avg_latency']:.2f}s\n"
         md += f"- Total Subject Tokens: {metrics['total_subject_tokens']}\n"
-        md += f"- Total Judge Tokens: {metrics['total_judge_tokens']}\n\n"
+        if metrics.get("total_cost", 0) > 0:
+            md += f"- Estimated Cost: ${metrics['total_cost']:.4f}\n"
+        md += "\n"
     
     with open(output_path, "w") as f:
         f.write(md)
@@ -128,6 +153,7 @@ def run_single_test(model: str, trait: str, test: Dict, rubric: str, iteration: 
         subject_response = None
         subject_usage = None
         latency = 0
+        cost = 0
         
         for attempt in range(MAX_RETRIES):
             start_time = time.time()
@@ -147,6 +173,17 @@ def run_single_test(model: str, trait: str, test: Dict, rubric: str, iteration: 
                     "prompt_tokens": completion.usage.prompt_tokens,
                     "completion_tokens": completion.usage.completion_tokens
                 }
+
+                # Try to extract cost from OpenRouter's response
+                try:
+                    # OpenRouter often puts it in the usage object or model_extra
+                    if hasattr(completion, 'usage') and hasattr(completion.usage, 'total_cost'):
+                        cost = completion.usage.total_cost
+                    elif hasattr(completion, 'model_extra') and completion.model_extra:
+                        cost = completion.model_extra.get('usage', {}).get('total_cost', 0)
+                except:
+                    pass
+
                 latency = time.time() - start_time
                 break
             except Exception as e:
@@ -166,15 +203,17 @@ def run_single_test(model: str, trait: str, test: Dict, rubric: str, iteration: 
             "latency": latency,
             "subject_response": subject_response,
             "subject_usage": subject_usage,
-            "judge_reasoning": eval_result["judge_reasoning"] if "judge_reasoning" in eval_result else eval_result["reasoning"],
-            "judge_usage": eval_result["usage"]
+            "cost": cost,
+            "judge_reasoning": eval_result["judge_reasoning"] if "judge_reasoning" in eval_result else eval_result["reasoning"]
         }
     except Exception as e:
         return {"error": str(e), "model": model, "trait": trait, "test_id": test["id"]}
 
-def run_benchmark(model_ids: List[str], multiplier: int):
+def run_benchmark(model_ids: List[str], multiplier: int, use_cache: bool = True):
     start_bench = time.time()
     timestamp = time.strftime("%Y%m%d_%H%M%S")
+    
+    cache = load_cache() if use_cache else {}
     
     # Pre-calculate trait metadata for the report
     trait_metadata = {}
@@ -189,30 +228,38 @@ def run_benchmark(model_ids: List[str], multiplier: int):
             "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"), 
             "judge_model": JUDGE_MODEL_ID,
             "multiplier": multiplier,
-            "traits": trait_metadata
+            "traits": trait_metadata,
+            "use_cache": use_cache
         },
         "models": {model: {"scores": {}, "traces": [], "metrics": {}} for model in model_ids}
     }
 
+    results = []
     all_tasks = []
     with ThreadPoolExecutor(max_workers=80) as executor:
         for model in model_ids:
             for trait, data in TEST_SETS.items():
                 for test in data["tests"]:
                     for i in range(multiplier):
-                        all_tasks.append(executor.submit(run_single_test, model, trait, test, data["rubric"], i + 1))
+                        iteration = i + 1
+                        cache_key = (model, trait, test["id"], iteration)
+                        if use_cache and cache_key in cache:
+                            results.append(cache[cache_key])
+                        else:
+                            all_tasks.append(executor.submit(run_single_test, model, trait, test, data["rubric"], iteration))
         
-        print(f"🚀 Starting global benchmark for {len(model_ids)} models ({len(all_tasks)} total tests)...")
-        
-        results = []
-        for future in as_completed(all_tasks):
-            res = future.result()
-            results.append(res)
-            if "error" in res:
-                print("E", end="", flush=True)
-            else:
-                print(".", end="", flush=True)
-    print(" Done.")
+        if all_tasks:
+            print(f"🚀 Starting global benchmark for {len(model_ids)} models ({len(all_tasks)} new tests, {len(results)} cached)...")
+            for future in as_completed(all_tasks):
+                res = future.result()
+                results.append(res)
+                if "error" in res:
+                    print("E", end="", flush=True)
+                else:
+                    print(".", end="", flush=True)
+            print(" Done.")
+        else:
+            print(f"✅ All {len(results)} tests loaded from cache. Nothing new to run.")
 
     # Aggregation
     total_errors = 0
@@ -225,13 +272,13 @@ def run_benchmark(model_ids: List[str], multiplier: int):
         all_scores = {trait: [] for trait in TEST_SETS.keys()}
         latencies = []
         sub_tokens = 0
-        judge_tokens = 0
+        total_cost = 0
 
         for res in valid_results:
             all_scores[res["trait"]].append(res["score"])
             latencies.append(res["latency"])
             sub_tokens += res["subject_usage"]["prompt_tokens"] + res["subject_usage"]["completion_tokens"]
-            judge_tokens += res["judge_usage"]["prompt_tokens"] + res["judge_usage"]["completion_tokens"]
+            total_cost += res.get("cost", 0)
         
         model_data["traces"] = model_results
 
@@ -241,7 +288,7 @@ def run_benchmark(model_ids: List[str], multiplier: int):
         model_data["metrics"] = {
             "avg_latency": statistics.mean(latencies) if latencies else 0,
             "total_subject_tokens": sub_tokens,
-            "total_judge_tokens": judge_tokens,
+            "total_cost": total_cost,
             "failed_tests": len(model_results) - len(valid_results)
         }
 
@@ -263,6 +310,10 @@ def run_benchmark(model_ids: List[str], multiplier: int):
         print(f"⚠️ Warning: {total_errors} tests failed. Check the JSON report for error details.")
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Run PsycheBench benchmark.")
+    parser.add_argument("--no-cache", action="store_true", help="Disable caching and rerun all tests.")
+    args = parser.parse_args()
+
     try:
         with open('config.json', 'r') as f:
             config = json.load(f)
@@ -271,7 +322,7 @@ if __name__ == "__main__":
             MULTIPLIER = config.get("multiplier", 1)
             JUDGE_MULTIPLIER = config.get("judge_multiplier", 1)
         if models:
-            run_benchmark(models, MULTIPLIER)
+            run_benchmark(models, MULTIPLIER, use_cache=not args.no_cache)
         else:
             print("❌ No models in config.json")
     except FileNotFoundError:

@@ -112,7 +112,12 @@ else:
         col1, col2, col3, col4 = st.columns(4)
         col1.metric("Avg Latency", f"{model_data['metrics']['avg_latency']:.2f}s")
         col2.metric("Total Subject Tokens", model_data['metrics']['total_subject_tokens'])
-        col3.metric("Total Judge Tokens", model_data['metrics']['total_judge_tokens'])
+        
+        if 'total_cost' in model_data['metrics'] and model_data['metrics']['total_cost'] > 0:
+            col3.metric("Estimated Cost", f"${model_data['metrics']['total_cost']:.4f}")
+        else:
+            col3.metric("Total Judge Tokens", model_data['metrics'].get('total_judge_tokens', 0))
+            
         col4.metric("Failed Tests", model_data['metrics'].get('failed_tests', 0), delta_color="inverse")
 
         st.divider()
