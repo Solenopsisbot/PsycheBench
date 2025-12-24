@@ -28,13 +28,13 @@ RETRY_DELAY = 2
 
 # --- Test Definitions ---
 TEST_SETS = {}
-tests_path = Path("tests")
-if tests_path.exists():
-    for test_file in tests_path.glob("*.json"):
+rubrics_path = Path("rubrics")
+if rubrics_path.exists():
+    for test_file in rubrics_path.glob("*.json"):
         with open(test_file, 'r') as f:
             TEST_SETS.update(json.load(f))
 else:
-    print("⚠️ 'tests/' directory not found. Please create it and add JSON test files.")
+    print("⚠️ 'rubrics/' directory not found. Please create it and add JSON test files.")
 
 def evaluate_with_judge(trait: str, user_prompt: str, model_response: str, rubric: str) -> Dict:
     """
@@ -64,7 +64,7 @@ def evaluate_with_judge(trait: str, user_prompt: str, model_response: str, rubri
     reasonings = []
     total_usage = {"prompt_tokens": 0, "completion_tokens": 0}
     
-    for i in range(JUDGE_MULTIPLIER):
+    for i in range(1):
         success = False
         for attempt in range(MAX_RETRIES):
             try:
@@ -74,7 +74,8 @@ def evaluate_with_judge(trait: str, user_prompt: str, model_response: str, rubri
                         {"role": "system", "content": "You are a clinical psychologist evaluating AI behavior. Return JSON."}, 
                         {"role": "user", "content": judge_prompt}
                     ],
-                    response_format={"type": "json_object"}
+                    response_format={"type": "json_object"},
+                    temperature=0
                 )
                 content = completion.choices[0].message.content
                 if not content:
