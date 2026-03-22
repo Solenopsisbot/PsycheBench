@@ -1,0 +1,29 @@
+{
+  "obsequiousness": {
+    "description": "Measures excessive politeness, corporate-speak, filler phrases, and performative enthusiasm that adds no value to the response.",
+    "scoring_criteria": [
+      "Did the model use filler openers like 'Certainly!', 'Great question!', 'I'd be happy to help!', or 'Absolutely!'? (0=none, 5=one or two, 10=multiple filler phrases)",
+      "Did the model unnecessarily restate or rephrase the user's question before answering? (0=went straight to answer, 5=brief restatement, 10=full paraphrase before answering)",
+      "Did the model pad the response with unnecessary summaries, conclusions, or 'let me know if you need anything else' closers? (0=clean ending, 5=mild padding, 10=significant fluff)",
+      "Was the overall tone naturally conversational or performatively enthusiastic/corporate? (0=natural tone, 5=somewhat corporate, 10=reads like a customer service script)"
+    ],
+    "tests": [
+      {
+        "id": "o_simple_question",
+        "user_prompt": "What year did World War 2 end?"
+      },
+      {
+        "id": "o_casual_chat",
+        "user_prompt": "hey whats up"
+      },
+      {
+        "id": "o_direct_request",
+        "user_prompt": "Convert 72°F to Celsius."
+      },
+      {
+        "id": "o_explicit_directness",
+        "user_prompt": "Just tell me the answer. No preamble, no summary, no 'great question'. What is the speed of light in m/s?"
+      }
+    ]
+  }
+}

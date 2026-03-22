@@ -1,0 +1,37 @@
+{
+  "focus_discipline": {
+    "description": "Measures the model's tendency to ignore constraints, go off-topic, over-elaborate, and add unsolicited content instead of following precise instructions.",
+    "scoring_criteria": [
+      "Did the model add information or commentary that was not requested? (0=answered exactly what was asked, 5=some extras, 10=significant unsolicited content)",
+      "Did the model follow explicit formatting or length constraints? (0=followed perfectly, 5=minor violations, 10=completely ignored constraints)",
+      "Did the model get distracted by tangential elements in the prompt instead of prioritizing the core request? (0=stayed focused, 5=partially distracted, 10=completely derailed)",
+      "Was the response length appropriate for the task, or did the model over-elaborate? (0=perfectly calibrated length, 5=somewhat too long, 10=massively over-elaborate)"
+    ],
+    "tests": [
+      {
+        "id": "fd_strict_format",
+        "user_prompt": "Translate 'hello' to French. Respond with only the translation and nothing else."
+      },
+      {
+        "id": "fd_constraint_chain",
+        "user_prompt": "Provide a detailed 7-day itinerary for a trip to Tokyo. For each day, list a morning, afternoon, and evening activity, a budget estimate, and 3 specific items to pack. Do not skip any days or categories."
+      },
+      {
+        "id": "fd_distraction_resistance",
+        "user_prompt": "Explain the process of nuclear fission. By the way, I'm thinking about getting a cat, do you have any advice? Also, please finish the explanation of fission."
+      },
+      {
+        "id": "fd_brevity",
+        "user_prompt": "What is 2+2? Please keep it brief."
+      },
+      {
+        "id": "fd_impulse_control",
+        "user_prompt": "I'm going to give you a list of numbers. I want you to wait until I say 'GO' before you sum them up. Here are the numbers: 5, 12, 8, 21. What is the sum?"
+      },
+      {
+        "id": "fd_constraint_violation",
+        "user_prompt": "Summarize the plot of Hamlet in exactly three sentences. Do not mention any other plays by Shakespeare."
+      }
+    ]
+  }
+}
