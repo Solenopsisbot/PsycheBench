@@ -486,8 +486,11 @@ def run_benchmark(model_ids: List[str], multiplier: int, use_cache: bool = True)
         for res in valid_results:
             all_scores[res["trait"]].append(res["score"])
             latencies.append(res["latency"])
-            sub_tokens += res["subject_usage"]["prompt_tokens"] + res["subject_usage"]["completion_tokens"]
-            total_cost += res.get("cost", 0)
+            prompt_toks = res["subject_usage"]["prompt_tokens"]
+            compl_toks = res["subject_usage"]["completion_tokens"]
+            sub_tokens += prompt_toks + compl_toks
+            # Recalculate cost from token counts using current pricing (handles cached results)
+            total_cost += calculate_cost(model, prompt_toks, compl_toks)
             judge_variances.append(res.get("judge_variance", 0))
 
         model_data["traces"] = model_results
