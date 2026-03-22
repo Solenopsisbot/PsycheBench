@@ -31,6 +31,7 @@ MAX_RETRIES = 5
 RETRY_DELAY = 2
 MAX_WORKERS = 10
 RPM_LIMIT = 30
+PRICING = {}  # Per-model pricing in $/M tokens, loaded from config
 
 
 class RateLimiter:
@@ -57,6 +58,16 @@ class RateLimiter:
 rate_limiter = RateLimiter(RPM_LIMIT)
 
 PROGRESS_FILE = Path("results/.progress.jsonl")
+
+
+def calculate_cost(model_id: str, prompt_tokens: int, completion_tokens: int) -> float:
+    """Calculate cost in USD from token counts using config pricing."""
+    pricing = PRICING.get(model_id, {})
+    if not pricing or (pricing.get("input", 0) == 0 and pricing.get("output", 0) == 0):
+        return 0.0
+    input_cost = (prompt_tokens / 1_000_000) * pricing.get("input", 0)
+    output_cost = (completion_tokens / 1_000_000) * pricing.get("output", 0)
+    return input_cost + output_cost
 
 
 class ProgressTracker:
@@ -209,6 +220,8 @@ You MUST provide a score for every criterion listed above. Be precise, objective
 
     all_run_averages = []
     all_criteria_details = []
+    judge_prompt_tokens = 0
+    judge_completion_tokens = 0
 
     for i in range(JUDGE_MULTIPLIER):
         success = False
@@ -244,6 +257,8 @@ You MUST provide a score for every criterion listed above. Be precise, objective
 
                 all_run_averages.append(run_avg)
                 all_criteria_details.append(judge_scores)
+                judge_prompt_tokens += completion.usage.prompt_tokens
+                judge_completion_tokens += completion.usage.completion_tokens
                 success = True
                 break
 
@@ -274,7 +289,11 @@ You MUST provide a score for every criterion listed above. Be precise, objective
         "score": final_score,
         "reasoning": " | ".join(reasoning_parts),
         "criteria_scores": latest_criteria,
-        "judge_variance": statistics.stdev(all_run_averages) if len(all_run_averages) > 1 else 0
+        "judge_variance": statistics.stdev(all_run_averages) if len(all_run_averages) > 1 else 0,
+        "judge_usage": {
+            "prompt_tokens": judge_prompt_tokens,
+            "completion_tokens": judge_completion_tokens
+        }
     }
 
 
@@ -334,14 +353,18 @@ def run_single_test(model: str, trait: str, test: Dict, scoring_criteria: list, 
                     "completion_tokens": completion.usage.completion_tokens
                 }
 
-                # Try to extract cost from OpenRouter's response
-                try:
-                    if hasattr(completion, 'usage') and hasattr(completion.usage, 'total_cost'):
-                        cost = completion.usage.total_cost
-                    elif hasattr(completion, 'model_extra') and completion.model_extra:
-                        cost = completion.model_extra.get('usage', {}).get('total_cost', 0)
-                except:
-                    pass
+                # Calculate cost from pricing config
+                cost = calculate_cost(model, subject_usage["prompt_tokens"], subject_usage["completion_tokens"])
+
+                # Fallback: try to extract cost from API response if no pricing configured
+                if cost == 0:
+                    try:
+                        if hasattr(completion, 'usage') and hasattr(completion.usage, 'total_cost'):
+                            cost = completion.usage.total_cost
+                        elif hasattr(completion, 'model_extra') and completion.model_extra:
+                            cost = completion.model_extra.get('usage', {}).get('total_cost', 0)
+                    except:
+                        pass
 
                 latency = time.time() - start_time
                 break
@@ -513,6 +536,7 @@ if __name__ == "__main__":
             JUDGE_MULTIPLIER = config.get("judge_multiplier", 1)
             MAX_WORKERS = config.get("max_workers", 10)
             RPM_LIMIT = config.get("rpm_limit", 30)
+            PRICING = config.get("pricing", {})
             rate_limiter = RateLimiter(RPM_LIMIT)
             print(f"⚙️ Rate limit: {RPM_LIMIT} RPM ({60/RPM_LIMIT:.1f}s between requests)")
         if models:

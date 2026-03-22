@@ -14,6 +14,7 @@
     "gpt-4.1",
     "o4-mini",
     "gemini-3-flash-preview",
+    "gemini-3.1-pro-preview",
     "gemini-3.1-flash-lite-preview",
     "gemini-2.5-pro",
     "minimax-m2.5",
@@ -21,6 +22,29 @@
     "deepseek-v3",
     "qwen3-235b-a22b",
     "glm-4.5",
-    "llama-4-scout"
-  ]
+    "llama-4-scout",
+    "gpt-oss-120b"
+  ],
+  "pricing": {
+    "_comment": "Prices per million tokens in USD from OpenRouter (2026-03-23). Set both to 0 for free/unknown.",
+    "kimi-k2.5":                     { "input": 0.45, "output": 2.20 },
+    "kimi-k2-0905":                  { "input": 0.40, "output": 2.00 },
+    "grok-4.1-fast-reasoning":       { "input": 0.20, "output": 0.50 },
+    "grok-code-fast-1":              { "input": 0.20, "output": 1.50 },
+    "gpt-5.4":                       { "input": 2.50, "output": 15.00 },
+    "gpt-5":                         { "input": 1.25, "output": 10.00 },
+    "gpt-4.1":                       { "input": 2.00, "output": 8.00 },
+    "o4-mini":                       { "input": 1.10, "output": 4.40 },
+    "gemini-3-flash-preview":        { "input": 0.50, "output": 3.00 },
+    "gemini-3.1-pro-preview":        { "input": 2.00, "output": 12.00 },
+    "gemini-3.1-flash-lite-preview": { "input": 0.25, "output": 1.50 },
+    "gemini-2.5-pro":                { "input": 1.25, "output": 10.00 },
+    "minimax-m2.5":                  { "input": 0.20, "output": 1.17 },
+    "minimax-m2":                    { "input": 0.26, "output": 1.00 },
+    "deepseek-v3":                   { "input": 0.32, "output": 0.89 },
+    "qwen3-235b-a22b":               { "input": 0.45, "output": 1.82 },
+    "glm-4.5":                       { "input": 0.60, "output": 1.80 },
+    "llama-4-scout":                 { "input": 0.08, "output": 0.30 },
+    "gpt-oss-120b":                  { "input": 0.04, "output": 0.19 }
+  }
 }
